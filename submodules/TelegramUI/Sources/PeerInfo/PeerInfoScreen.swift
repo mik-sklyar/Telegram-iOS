@@ -1721,7 +1721,13 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
         self.videoCallsEnabled = true
         self.presentationData = controller.presentationData
         self.nearbyPeerDistance = nearbyPeerDistance
-        self.callMessages = callMessages
+        if !callMessages.isEmpty {
+            print("Gocha!!!")
+            let message = callMessages[0].withUpdatedTimestamp(1657099749)
+            self.callMessages = [message]
+        } else {
+            self.callMessages = callMessages
+        }
         self.isSettings = isSettings
         self.isMediaOnly = context.account.peerId == peerId && !isSettings
         
