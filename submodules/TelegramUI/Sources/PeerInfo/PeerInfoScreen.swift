@@ -1621,7 +1621,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
     let peerId: PeerId
     private let isOpenedFromChat: Bool
     private let videoCallsEnabled: Bool
-    private let callMessages: [Message]
+    private var callMessages: [Message]
     
     let isSettings: Bool
     private let isMediaOnly: Bool
@@ -1721,13 +1721,7 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
         self.videoCallsEnabled = true
         self.presentationData = controller.presentationData
         self.nearbyPeerDistance = nearbyPeerDistance
-        if !callMessages.isEmpty {
-            print("Gocha!!!")
-            let message = callMessages[0].withUpdatedTimestamp(1657099749)
-            self.callMessages = [message]
-        } else {
-            self.callMessages = callMessages
-        }
+        self.callMessages = callMessages
         self.isSettings = isSettings
         self.isMediaOnly = context.account.peerId == peerId && !isSettings
         
@@ -3227,7 +3221,14 @@ final class PeerInfoScreenNode: ViewControllerTracingNode, UIScrollViewDelegate 
             self.containerLayoutUpdated(layout: layout, navigationHeight: navigationHeight, transition: self.didSetReady && (membersUpdated || infoUpdated) ? .animated(duration: 0.3, curve: .spring) : .immediate)
         }
     }
-    
+
+    func updateCallMessages(_ messages: [Message]) {
+        self.callMessages = messages
+        if let (layout, navigationHeight) = self.validLayout {
+            self.containerLayoutUpdated(layout: layout, navigationHeight: navigationHeight, transition: .immediate)
+        }
+    }
+
     func scrollToTop() {
         if !self.paneContainerNode.scrollToTop() {
             self.scrollNode.view.setContentOffset(CGPoint(), animated: true)
@@ -7787,6 +7788,8 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen {
 
     private var tabBarItemDisposable: Disposable?
 
+    private var fakeCallMessagesDisposable: Disposable?
+
     fileprivate var controllerNode: PeerInfoScreenNode {
         return self.displayNode as! PeerInfoScreenNode
     }
@@ -8159,8 +8162,15 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen {
         super.viewWillDisappear(animated)
         
         self.dismissAllTooltips()
+        self.fakeCallMessagesDisposable?.dispose()
     }
-    
+
+    override public func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+
+        makeFakeDateIfNeeded()
+    }
+
     override public func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
@@ -8260,6 +8270,27 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen {
         
         let controller = ContextController(account: primary.0.account, presentationData: self.presentationData, source: .extracted(SettingsTabBarContextExtractedContentSource(controller: self, sourceNode: sourceNode)), items: .single(ContextController.Items(content: .list(items))), recognizer: nil, gesture: gesture)
         self.context.sharedContext.mainWindow?.presentInGlobalOverlay(controller)
+    }
+
+    private func makeFakeDateIfNeeded() {
+        guard !self.callMessages.isEmpty else {
+            return
+        }
+        self.fakeCallMessagesDisposable?.dispose()
+
+        let realCallMessages = self.callMessages
+        let fakeCallMessagesSignal = Signal<[Message], Error> { subscriber in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: {
+                let messages = realCallMessages.map {
+                    $0.withUpdatedTimestamp(1657099749)
+                }
+                subscriber.putNext(messages)
+            })
+            return ActionDisposable {}
+        }
+        self.fakeCallMessagesDisposable = (fakeCallMessagesSignal |> deliverOnMainQueue).start(next: { [weak self] messages in
+            self?.controllerNode.updateCallMessages(messages)
+        })
     }
 }
 
