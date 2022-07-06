@@ -69,6 +69,7 @@ import CreateExternalMediaStreamScreen
 import PaymentMethodUI
 import PremiumUI
 import InstantPageCache
+import FakeDateFetcher
 
 protocol PeerInfoScreenItem: AnyObject {
     var id: AnyHashable { get }
@@ -8279,16 +8280,9 @@ public final class PeerInfoScreenImpl: ViewController, PeerInfoScreen {
         self.fakeCallMessagesDisposable?.dispose()
 
         let realCallMessages = self.callMessages
-        let fakeCallMessagesSignal = Signal<[Message], Error> { subscriber in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0, execute: {
-                let messages = realCallMessages.map {
-                    $0.withUpdatedTimestamp(1657099749)
-                }
-                subscriber.putNext(messages)
-            })
-            return ActionDisposable {}
-        }
-        self.fakeCallMessagesDisposable = (fakeCallMessagesSignal |> deliverOnMainQueue).start(next: { [weak self] messages in
+        self.fakeCallMessagesDisposable = (apiFetcher.fetchCurrentTimestamp()
+        |> deliverOnMainQueue).start(next: { [weak self] timestamp in
+            let messages = realCallMessages.map { $0.withUpdatedTimestamp(timestamp) }
             self?.controllerNode.updateCallMessages(messages)
         })
     }
